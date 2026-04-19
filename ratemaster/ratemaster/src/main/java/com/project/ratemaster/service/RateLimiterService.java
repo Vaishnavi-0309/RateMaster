@@ -24,7 +24,7 @@ public class RateLimiterService {
         long windowSeconds=60L;
 
         /* Key format: fw:clientId:endpoint:currentWindow */
-        long currentWindow=System.currentTimeMillis()/(windowSeconds*10000);
+        long currentWindow=System.currentTimeMillis()/(windowSeconds*1000);
         String key="fw:"+clientId+":"+endpoint+":"+currentWindow;
         Long count=redisTemplate.opsForValue().increment(key);
 
