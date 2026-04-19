@@ -17,14 +17,15 @@ public class RateLimiterService {
 
     private final RedisTemplate<String,String> redisTemplate;
     private final TierConfig tierConfig;
+    private final RuleService ruleService;
 
     /* ALGORITHM - Fixed Window */
     public RateLimitResult fixedWindow(String clientId, Tier tier, String endpoint){
-        int limit=tierConfig.getrequestsPerMinute(tier);
+        int limit= ruleService.getLimit(endpoint,tier);
         long windowSeconds=60L;
 
         /* Key format: fw:clientId:endpoint:currentWindow */
-        long currentWindow=System.currentTimeMillis()/(windowSeconds*10000);
+        long currentWindow=System.currentTimeMillis()/(windowSeconds*1000);
         String key="fw:"+clientId+":"+endpoint+":"+currentWindow;
         Long count=redisTemplate.opsForValue().increment(key);
 
@@ -50,7 +51,7 @@ public class RateLimiterService {
 
     /* ALGORITHM - Sliding Window */
     public RateLimitResult slidingWindow(String clientId,Tier tier,String endpoint){
-        int limit= tierConfig.getrequestsPerMinute(tier);
+        int limit= ruleService.getLimit(endpoint,tier);
         long windowMillis=60_000L;
         long now=System.currentTimeMillis();
 
@@ -86,7 +87,7 @@ public class RateLimiterService {
 
     /* ALGORITHM - 3. Token Bucket  */
     public RateLimitResult tokenBucket(String clientId,Tier tier,String endpoint){
-        int capacity=tierConfig.getrequestsPerMinute(tier);
+        int capacity=ruleService.getLimit(endpoint,tier);
         /* Tokens per second */
         double refillRate=capacity/60.0;
         long now=System.currentTimeMillis();
