@@ -1,6 +1,8 @@
 package com.project.ratemaster.controller;
 
+import com.project.ratemaster.dto.AuditEvent;
 import com.project.ratemaster.dto.RateLimitResult;
+import com.project.ratemaster.kafka.AuditProducer;
 import com.project.ratemaster.model.Tier;
 import com.project.ratemaster.service.RateLimiterService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -15,6 +17,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import java.time.LocalDateTime;
 import java.util.Map;
 
 @RestController
@@ -24,6 +27,7 @@ import java.util.Map;
 public class GatewayController {
     private final RateLimiterService rateLimiterService;
     private final WebClient.Builder webClientBuilder;
+    private final AuditProducer auditProducer;
 
     @Value("${app.finstream-url}")
     private String finstreamUrl;
@@ -32,7 +36,7 @@ public class GatewayController {
     private String algorithm;
 
     /* Handles ALL HTTP methods - GET,POST,PUT,DELETE  */
-
+    @RequestMapping("/**")
     public ResponseEntity<?> gateway(HttpServletRequest request,
                                      @RequestBody(required=false) String body){
         String clientId=(String) request.getAttribute("clientId");
@@ -59,6 +63,22 @@ public class GatewayController {
             case "TOKEN_BUCKET" -> rateLimiterService.tokenBucket(clientId,tier,endPoint);
             default -> rateLimiterService.slidingWindow(clientId,tier,endPoint);
         };
+
+        // Build and fire audit event async
+        AuditEvent auditEvent = AuditEvent.builder()
+                .clientId(clientId)
+                .clientEmail(clientEmail)
+                .endpoint(endPoint)
+                .tier(tier.name())
+                .algorithm(algorithm)
+                .allowed(result.isAllowed())
+                .remainingRequests(result.getRemainingRequests())
+                .ipAddress(request.getRemoteAddr())
+                .timeStamp(LocalDateTime.now().toString())
+                .build();
+
+        log.info("Firing audit event for client: {}", clientEmail);
+        auditProducer.publishEvent(auditEvent);
 
         if(!result.isAllowed()){
             log.warn("Rate limit exceeded — client:{} endpoint:{}",
@@ -87,11 +107,17 @@ public class GatewayController {
         try{
             WebClient client=webClientBuilder.build();
             /* Build and execute request to Finstream */
+            String authHeader = request.getHeader("Authorization");
             WebClient.RequestBodySpec requestBodySpec=client
                     .method(HttpMethod.valueOf(method))
                     .uri(targetUrl)
                     .header("X-Forwarded-By","RateMaster")
                     .header("X-Client-Tier",tier.name());
+
+            // Forward JWT if present
+            if (authHeader != null && !authHeader.isBlank()) {
+                requestBodySpec.header("Authorization", authHeader);
+            }
 
             /* Add body if present */
             ResponseEntity<String> finstreamResponse;

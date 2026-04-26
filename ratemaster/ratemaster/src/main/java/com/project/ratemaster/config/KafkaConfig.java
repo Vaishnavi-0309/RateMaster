@@ -9,7 +9,7 @@ import org.springframework.kafka.config.TopicBuilder;
 public class KafkaConfig {
     @Bean
     public NewTopic allowedTopic(){
-        return TopicBuilder.name("requesrs.allowed")
+        return TopicBuilder.name("requests.allowed")
                 .partitions(1)
                 .replicas(1)
                 .build();
@@ -17,7 +17,7 @@ public class KafkaConfig {
 
     @Bean
     public NewTopic blockedTopic(){
-        return TopicBuilder.name("requets.blocked")
+        return TopicBuilder.name("requests.blocked")
                 .partitions(1)
                 .replicas(1)
                 .build();
